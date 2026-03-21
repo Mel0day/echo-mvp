@@ -3,3 +3,13 @@ node_modules/
 .env.local
 dist/
 .next/
+data/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.uv/
+*.egg-info/
+build/
+.pytest_cache/
+uploads/

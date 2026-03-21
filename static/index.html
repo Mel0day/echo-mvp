@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Echo — 认知协作 AI</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --bg2: #161616;
+    --bg3: #1e1e1e;
+    --border: #2a2a2a;
+    --border2: #333;
+    --text: #e8e8e8;
+    --text2: #999;
+    --text3: #666;
+    --accent: #7c6af7;
+    --accent2: #6356d6;
+    --accent-dim: rgba(124,106,247,0.12);
+    --success: #4ade80;
+    --warn: #f59e0b;
+    --err: #f87171;
+    --mono: 'SF Mono', 'Fira Mono', 'Consolas', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--mono);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* Layout */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Header */
+  .header {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+  }
+  .logo span { color: var(--text2); font-weight: 400; font-size: 12px; margin-left: 8px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  /* Nav tabs */
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .nav-tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    color: var(--text2);
+    font-family: var(--mono);
+    font-size: 13px;
+    border-bottom: 2px solid transparent;
+    transition: all 0.15s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .nav-tab:hover { color: var(--text); }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Screens */
+  .screen { display: none; flex: 1; overflow-y: auto; }
+  .screen.active { display: flex; flex-direction: column; }
+
+  /* Consent Screen */
+  .consent-screen {
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+  }
+  .consent-box {
+    max-width: 560px;
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 40px;
+  }
+  .consent-box h2 { font-size: 22px; margin-bottom: 8px; color: var(--accent); }
+  .consent-box .subtitle { color: var(--text2); margin-bottom: 32px; font-size: 13px; }
+  .consent-section { margin-bottom: 24px; }
+  .consent-section h3 { font-size: 13px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .consent-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px;
+    background: var(--bg3);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .consent-item .icon { font-size: 18px; flex-shrink: 0; }
+  .consent-item p { font-size: 13px; color: var(--text2); }
+  .consent-item strong { color: var(--text); }
+  .consent-actions { display: flex; gap: 12px; margin-top: 32px; }
+
+  /* Import Screen */
+  .import-screen { padding: 24px; align-items: center; }
+  .import-container { max-width: 600px; width: 100%; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--text3); margin-bottom: 16px; }
+
+  .dropzone {
+    border: 2px dashed var(--border2);
+    border-radius: 8px;
+    padding: 48px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--bg2);
+    margin-bottom: 24px;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .dropzone .drop-icon { font-size: 32px; margin-bottom: 12px; }
+  .dropzone h3 { font-size: 15px; margin-bottom: 6px; }
+  .dropzone p { color: var(--text2); font-size: 12px; }
+  .dropzone input[type=file] { display: none; }
+
+  /* Progress */
+  .progress-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+  .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .progress-label { font-size: 13px; color: var(--text2); }
+  .progress-bar-wrap { background: var(--border); border-radius: 4px; height: 4px; margin-bottom: 12px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--accent); border-radius: 4px; transition: width 0.3s; }
+  .progress-msg { font-size: 12px; color: var(--text2); }
+  .progress-stats { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .stat-item { font-size: 12px; }
+  .stat-item .stat-val { font-size: 18px; font-weight: 700; color: var(--text); display: block; }
+  .stat-item .stat-key { color: var(--text3); }
+
+  /* FTUE / Recommendations */
+  .ftue-screen { padding: 24px; align-items: center; }
+  .ftue-container { max-width: 600px; width: 100%; }
+  .ftue-header { text-align: center; padding: 32px 0 24px; }
+  .ftue-header .big-text { font-size: 24px; margin-bottom: 8px; }
+  .ftue-header .sub-text { color: var(--text2); font-size: 13px; }
+  .rec-title { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: var(--text3); margin-bottom: 12px; }
+  .rec-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+  .rec-item {
+    padding: 14px 18px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s;
+    text-align: left;
+    color: var(--text);
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .rec-item:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+  .rec-item .rec-arrow { color: var(--text3); font-size: 10px; margin-left: auto; }
+
+  /* Chat Screen */
+  .chat-screen { padding: 0; height: 0; flex: 1; }
+  .chat-layout { display: flex; flex-direction: column; height: 100%; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 20px; }
+  .chat-input-area {
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    background: var(--bg);
+  }
+  .chat-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .chat-input {
+    flex: 1;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    resize: none;
+    outline: none;
+    min-height: 44px;
+    max-height: 120px;
+    overflow-y: auto;
+    line-height: 1.5;
+    transition: border-color 0.15s;
+  }
+  .chat-input:focus { border-color: var(--accent); }
+  .chat-input::placeholder { color: var(--text3); }
+  .input-hint { font-size: 11px; color: var(--text3); margin-top: 6px; }
+
+  /* Messages */
+  .msg { max-width: 100%; }
+  .msg-user { align-self: flex-end; max-width: 70%; }
+  .msg-assistant { align-self: flex-start; max-width: 90%; }
+
+  .msg-user .bubble {
+    background: var(--accent);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 6px 6px 2px 6px;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .msg-assistant .bubble {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 16px 18px;
+    border-radius: 6px 6px 6px 2px;
+  }
+  .msg-meta { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+  .msg-content { font-size: 14px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .msg-content p { margin-bottom: 8px; }
+
+  /* Citations */
+  .citations-toggle {
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    user-select: none;
+  }
+  .citations-toggle:hover { color: var(--accent); }
+  .citations-list { margin-top: 8px; display: none; }
+  .citations-list.open { display: block; }
+  .citation-item {
+    border-left: 2px solid var(--accent);
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    background: var(--bg3);
+    border-radius: 0 4px 4px 0;
+    font-size: 12px;
+  }
+  .citation-meta { color: var(--text2); margin-bottom: 4px; }
+  .citation-snippet { color: var(--text3); font-style: italic; }
+
+  /* Feedback */
+  .feedback-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    align-items: center;
+  }
+  .feedback-label { font-size: 12px; color: var(--text3); }
+  .feedback-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 13px;
+    font-family: var(--mono);
+    transition: all 0.15s;
+  }
+  .feedback-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .feedback-btn.active { border-color: var(--success); color: var(--success); background: rgba(74,222,128,0.1); }
+
+  /* Settings Screen */
+  .settings-screen { padding: 24px; }
+  .settings-container { max-width: 600px; }
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-size: 13px; color: var(--text2); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .stat-block { text-align: center; }
+  .stat-block .val { font-size: 28px; font-weight: 700; color: var(--accent); display: block; }
+  .stat-block .key { font-size: 11px; color: var(--text3); }
+
+  /* History table */
+  .history-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+  .history-table th { text-align: left; color: var(--text3); padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .history-table td { padding: 8px 8px; border-bottom: 1px solid var(--border2); color: var(--text2); vertical-align: top; }
+  .history-table td:first-child { color: var(--text); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Failed files */
+  .failed-list { font-size: 12px; }
+  .failed-item { padding: 8px; background: rgba(248,113,113,0.08); border-left: 2px solid var(--err); margin-bottom: 4px; border-radius: 0 4px 4px 0; }
+  .failed-item .failed-name { color: var(--err); }
+  .failed-item .failed-reason { color: var(--text3); }
+
+  /* Buttons */
+  .btn {
+    padding: 9px 18px;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-secondary { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: rgba(248,113,113,0.1); color: var(--err); border: 1px solid rgba(248,113,113,0.3); }
+  .btn-danger:hover { background: rgba(248,113,113,0.2); }
+  .btn-sm { padding: 5px 10px; font-size: 12px; }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Utility */
+  .hidden { display: none !important; }
+  .text-success { color: var(--success); }
+  .text-warn { color: var(--warn); }
+  .text-err { color: var(--err); }
+  .text-accent { color: var(--accent); }
+  .text-dim { color: var(--text2); }
+  .text-sm { font-size: 12px; }
+  .mt-8 { margin-top: 8px; }
+  .mt-16 { margin-top: 16px; }
+  .mt-24 { margin-top: 24px; }
+  .mb-16 { margin-bottom: 16px; }
+  .gap-8 { display: flex; gap: 8px; }
+  .flex-row { display: flex; align-items: center; }
+
+  /* Loading dots */
+  .loading-dots::after {
+    content: '';
+    animation: dots 1.5s infinite;
+  }
+  @keyframes dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+  }
+
+  /* Markdown-ish rendering */
+  .msg-content strong { font-weight: 700; color: var(--text); }
+  .msg-content em { color: var(--text2); }
+  .msg-content code { background: var(--bg3); padding: 1px 4px; border-radius: 3px; font-size: 12px; }
+  .msg-content hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 48px 24px; color: var(--text3); }
+  .empty-state .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-state p { font-size: 13px; }
+
+  /* Warning banner */
+  .banner {
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .banner-warn { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: var(--warn); }
+  .banner-info { background: var(--accent-dim); border: 1px solid rgba(124,106,247,0.3); color: var(--accent); }
+  .banner-success { background: rgba(74,222,128,0.1); border: 1px solid rgba(74,222,128,0.3); color: var(--success); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  @media (max-width: 600px) {
+    .chat-messages { padding: 16px; }
+    .msg-user { max-width: 90%; }
+    .stat-grid { grid-template-columns: repeat(2, 1fr); }
+    .header { padding: 10px 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ===================== CONSENT SCREEN ===================== -->
+  <div id="screen-consent" class="screen consent-screen active">
+    <div class="consent-box">
+      <h2>ECHO</h2>
+      <p class="subtitle">AI 认知协作 · 在开始前，请了解数据使用方式</p>
+
+      <div class="consent-section">
+        <h3>本地存储（永不离开你的电脑）</h3>
+        <div class="consent-item">
+          <span class="icon">💾</span>
+          <p><strong>原始笔记内容</strong>存储在本地 LanceDB 数据库中，不会上传到任何服务器。</p>
+        </div>
+        <div class="consent-item">
+          <span class="icon">🔒</span>
+          <p><strong>向量索引</strong>（用于语义搜索的数学表示）也存储在你的本机。</p>
+        </div>
+      </div>
+
+      <div class="consent-section">
+        <h3>发送到云端（需要你的同意）</h3>
+        <div class="consent-item">
+          <span class="icon">☁️</span>
+          <p><strong>文本内容</strong>会发送至 <strong>OpenAI Embedding API</strong> 进行向量化（生成数学表示）。OpenAI 会处理你的文字，但不会用于模型训练（根据 OpenAI API 使用条款）。</p>
+        </div>
+        <div class="consent-item">
+          <span class="icon">🤖</span>
+          <p><strong>搜索到的相关片段</strong>（非全部内容）会发送至 <strong>Anthropic Claude API</strong> 生成回答。</p>
+        </div>
+      </div>
+
+      <div class="consent-section">
+        <h3>你的控制权</h3>
+        <div class="consent-item">
+          <span class="icon">🗑️</span>
+          <p>你可以随时在「设置」页面<strong>彻底删除所有本地数据</strong>，包括向量索引。</p>
+        </div>
+      </div>
+
+      <div class="consent-actions">
+        <button class="btn btn-primary" onclick="giveConsent(true)">我已了解，继续</button>
+        <button class="btn btn-secondary" onclick="giveConsent(false)">不同意，退出</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== MAIN APP ===================== -->
+  <div id="main-app" class="hidden" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+
+    <div class="header">
+      <div class="logo">ECHO <span>认知协作</span></div>
+      <div class="header-actions">
+        <span id="index-status-badge" class="text-sm text-dim"></span>
+      </div>
+    </div>
+
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('chat')" id="tab-chat">对话</button>
+      <button class="nav-tab" onclick="switchTab('import')" id="tab-import">导入</button>
+      <button class="nav-tab" onclick="switchTab('settings')" id="tab-settings">设置</button>
+    </div>
+
+    <!-- ===================== CHAT TAB ===================== -->
+    <div id="screen-chat" class="screen active chat-screen">
+      <div class="chat-layout">
+        <div class="chat-messages" id="chat-messages">
+          <div class="empty-state" id="chat-empty">
+            <div class="empty-icon">💬</div>
+            <p>还没有对话记录。<br>在下方输入你想问的问题，或先<button class="btn btn-sm btn-secondary" onclick="switchTab('import')" style="vertical-align:middle;margin-left:4px;">导入笔记</button></p>
+          </div>
+        </div>
+
+        <!-- FTUE recommendations (shown after import) -->
+        <div id="ftue-recs" class="hidden" style="padding:16px 24px;border-top:1px solid var(--border);">
+          <div class="rec-title">我已读完你的笔记，试试这些问题 ↓</div>
+          <div class="rec-list" id="rec-list"></div>
+        </div>
+
+        <div class="chat-input-area">
+          <div class="chat-input-row">
+            <textarea
+              class="chat-input"
+              id="chat-input"
+              placeholder="问一个关于你自己笔记的问题..."
+              rows="1"
+              onkeydown="handleInputKeydown(event)"
+              oninput="autoResizeTextarea(this)"
+            ></textarea>
+            <button class="btn btn-primary" id="send-btn" onclick="sendQuestion()">发送</button>
+          </div>
+          <div class="input-hint">Enter 发送 · Shift+Enter 换行 · <label style="cursor:pointer;"><input type="checkbox" id="use-sonnet" style="margin-right:4px;">深度分析（Sonnet）</label></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== IMPORT TAB ===================== -->
+    <div id="screen-import" class="screen import-screen">
+      <div class="import-container">
+        <div class="section-title">导入 Notion 数据</div>
+
+        <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+          <input type="file" id="file-input" accept=".zip" onchange="handleFileSelect(event)">
+          <div class="drop-icon">📦</div>
+          <h3>拖入或点击上传 Notion 导出文件</h3>
+          <p class="mt-8">支持 Notion 导出的 .zip 文件（含 Markdown 和 HTML 格式）</p>
+          <p style="margin-top:6px;font-size:11px;color:var(--text3);">在 Notion → 设置 → 导出内容 → 全部页面</p>
+        </div>
+
+        <!-- Progress card (hidden by default) -->
+        <div id="import-progress" class="hidden">
+          <div class="progress-card">
+            <div class="progress-header">
+              <span class="progress-label" id="progress-phase">准备中...</span>
+              <span class="text-sm text-dim" id="progress-pct">0%</span>
+            </div>
+            <div class="progress-bar-wrap">
+              <div class="progress-bar" id="progress-bar" style="width:0%"></div>
+            </div>
+            <div class="progress-msg" id="progress-msg"></div>
+            <div class="progress-stats" id="progress-stats"></div>
+          </div>
+
+          <!-- Failed files -->
+          <div id="failed-files-section" class="hidden">
+            <div class="section-title mt-16">解析失败的文件</div>
+            <div class="failed-list" id="failed-list"></div>
+          </div>
+        </div>
+
+        <div id="import-success" class="hidden">
+          <div class="banner banner-success">
+            <span>✓</span>
+            <div>
+              <div id="success-msg"></div>
+              <button class="btn btn-sm btn-primary mt-8" onclick="goToChat()">开始提问 →</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="import-error" class="hidden">
+          <div class="banner banner-warn">
+            <span>⚠</span>
+            <div id="error-msg"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================== SETTINGS TAB ===================== -->
+    <div id="screen-settings" class="screen settings-screen">
+      <div class="settings-container">
+        <div class="section-title">索引状态</div>
+        <div class="card">
+          <h3>当前索引</h3>
+          <div class="stat-grid" id="index-stats-grid">
+            <div class="stat-block"><span class="val" id="stat-chunks">-</span><span class="key">文本块</span></div>
+            <div class="stat-block"><span class="val" id="stat-sources">-</span><span class="key">来源文件数</span></div>
+            <div class="stat-block"><span class="val" id="stat-updated">-</span><span class="key">最后更新</span></div>
+          </div>
+        </div>
+
+        <div class="section-title">导入历史</div>
+        <div class="card" id="history-card">
+          <div id="history-content">
+            <div class="text-dim text-sm">加载中...</div>
+          </div>
+        </div>
+
+        <div class="section-title">数据管理</div>
+        <div class="card">
+          <h3>危险操作</h3>
+          <p class="text-sm text-dim mb-16">以下操作不可撤销，数据将从磁盘彻底删除。</p>
+          <div class="gap-8">
+            <button class="btn btn-danger" onclick="clearAllData()">清除所有数据</button>
+          </div>
+        </div>
+
+        <div class="section-title">隐私说明</div>
+        <div class="card">
+          <h3>数据流向</h3>
+          <div class="consent-item" style="margin-bottom:8px;">
+            <span class="icon">💾</span>
+            <p class="text-sm"><strong>原始笔记文本</strong>：仅存本机，不出境</p>
+          </div>
+          <div class="consent-item" style="margin-bottom:8px;">
+            <span class="icon">☁️</span>
+            <p class="text-sm"><strong>Embedding 向量</strong>：文本→OpenAI API→数学向量→存本机（OpenAI 不保留原文）</p>
+          </div>
+          <div class="consent-item">
+            <span class="icon">🤖</span>
+            <p class="text-sm"><strong>检索片段</strong>：仅搜索结果（不是全部笔记）→Anthropic Claude API→回答</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-app -->
+</div><!-- /app -->
+
+<script>
+// ════════════════════════════════════════════════
+// State
+// ════════════════════════════════════════════════
+const state = {
+  currentTab: 'chat',
+  chatHistory: [], // {role, content, citations}
+  importJobId: null,
+  indexStats: null,
+  ftueShown: false,
+  sending: false,
+};
+
+// ════════════════════════════════════════════════
+// Init
+// ════════════════════════════════════════════════
+async function init() {
+  // Check consent
+  const consent = await api('/consent');
+  if (consent.consented === true) {
+    showMainApp();
+    loadIndexStats();
+  } else {
+    show('screen-consent');
+  }
+}
+
+async function giveConsent(agreed) {
+  await api('/consent', 'POST', { consented: agreed, timestamp: new Date().toISOString() });
+  if (agreed) {
+    showMainApp();
+    loadIndexStats();
+  } else {
+    document.getElementById('app').innerHTML =
+      '<div style="padding:40px;text-align:center;color:var(--text3);font-family:var(--mono);">' +
+      '<div style="font-size:32px;margin-bottom:16px;">👋</div>' +
+      '<p>你选择了不同意数据使用条款。</p>' +
+      '<p style="margin-top:8px;font-size:12px;">关闭此页面即可退出 Echo。</p>' +
+      '</div>';
+  }
+}
+
+function showMainApp() {
+  hide('screen-consent');
+  const mainApp = document.getElementById('main-app');
+  mainApp.style.display = 'flex';
+  mainApp.classList.remove('hidden');
+}
+
+// ════════════════════════════════════════════════
+// Navigation
+// ════════════════════════════════════════════════
+function switchTab(tab) {
+  state.currentTab = tab;
+  ['chat', 'import', 'settings'].forEach(t => {
+    document.getElementById('screen-' + t).classList.toggle('active', t === tab);
+    document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+  });
+  if (tab === 'settings') loadSettings();
+}
+
+function goToChat() {
+  switchTab('chat');
+  // Check if we should show FTUE recommendations
+  if (!state.ftueShown && state.indexStats && state.indexStats.total_chunks > 0) {
+    loadRecommendations();
+  }
+}
+
+// ════════════════════════════════════════════════
+// Import
+// ════════════════════════════════════════════════
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) startImport(file);
+});
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) startImport(file);
+}
+
+async function startImport(file) {
+  if (!file.name.endsWith('.zip')) {
+    showImportError('请选择 .zip 格式的 Notion 导出文件');
+    return;
+  }
+
+  hide('import-error');
+  hide('import-success');
+  show('import-progress');
+  setProgressBar(2, '上传中...');
+  document.getElementById('progress-msg').textContent = '正在上传文件...';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  let jobId;
+  try {
+    const res = await fetch('/import', { method: 'POST', body: formData });
+    if (!res.ok) {
+      const err = await res.json();
+      showImportError(err.detail || '上传失败，请重试');
+      return;
+    }
+    const data = await res.json();
+    jobId = data.job_id;
+    state.importJobId = jobId;
+  } catch (e) {
+    showImportError('网络错误，请确认后端服务正在运行');
+    return;
+  }
+
+  // Listen to SSE progress
+  const evtSource = new EventSource('/import/status/' + jobId);
+  evtSource.onmessage = (e) => {
+    const status = JSON.parse(e.data);
+    updateImportProgress(status);
+    if (status.status === 'done' || status.status === 'error') {
+      evtSource.close();
+      if (status.status === 'done') {
+        onImportDone(status);
+      } else {
+        showImportError(status.error || '导入失败');
+      }
+    }
+  };
+  evtSource.onerror = () => {
+    evtSource.close();
+    showImportError('与服务器的连接中断，请刷新页面');
+  };
+}
+
+function updateImportProgress(status) {
+  const total = status.total_chunks || 1;
+  const done = status.processed_files || 0;
+  let pct = 0;
+  if (status.status === 'processing') {
+    if (status.total_chunks > 0) {
+      pct = Math.min(95, Math.round((done / total) * 100));
+    } else {
+      pct = 30;
+    }
+  }
+
+  setProgressBar(pct, status.message || '处理中...');
+  document.getElementById('progress-msg').textContent = status.message || '';
+
+  if (status.total_files > 0) {
+    document.getElementById('progress-stats').innerHTML =
+      `<div class="stat-item"><span class="stat-val">${status.successful_docs}</span><span class="stat-key">解析成功</span></div>` +
+      `<div class="stat-item"><span class="stat-val">${status.failed_docs}</span><span class="stat-key">解析失败</span></div>` +
+      `<div class="stat-item"><span class="stat-val">${status.total_chunks}</span><span class="stat-key">文本块</span></div>`;
+  }
+}
+
+function onImportDone(status) {
+  setProgressBar(100, '完成');
+
+  // Show failed files if any
+  if (status.failed_files && status.failed_files.length > 0) {
+    show('failed-files-section');
+    const failedList = document.getElementById('failed-list');
+    failedList.innerHTML = status.failed_files.map(f =>
+      `<div class="failed-item"><div class="failed-name">${esc(f.filename)}</div><div class="failed-reason">${esc(f.reason)}</div></div>`
+    ).join('');
+  }
+
+  show('import-success');
+  document.getElementById('success-msg').textContent = status.message;
+
+  // Refresh index stats
+  loadIndexStats();
+
+  // Preload recommendations
+  state.ftueShown = false;
+}
+
+function showImportError(msg) {
+  hide('import-progress');
+  show('import-error');
+  document.getElementById('error-msg').textContent = msg;
+}
+
+function setProgressBar(pct, phase) {
+  document.getElementById('progress-bar').style.width = pct + '%';
+  document.getElementById('progress-pct').textContent = pct + '%';
+  document.getElementById('progress-phase').textContent = phase;
+}
+
+// ════════════════════════════════════════════════
+// Chat
+// ════════════════════════════════════════════════
+function handleInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendQuestion();
+  }
+}
+
+function autoResizeTextarea(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+async function sendQuestion() {
+  if (state.sending) return;
+  const input = document.getElementById('chat-input');
+  const question = input.value.trim();
+  if (!question) return;
+
+  const useSonnet = document.getElementById('use-sonnet').checked;
+
+  // Clear input
+  input.value = '';
+  input.style.height = 'auto';
+
+  // Add user message
+  addMessage({ role: 'user', content: question });
+
+  // Hide FTUE recs
+  hide('ftue-recs');
+
+  // Show loading
+  state.sending = true;
+  document.getElementById('send-btn').disabled = true;
+  const loadingId = addLoadingMessage();
+
+  try {
+    const response = await api('/qa', 'POST', {
+      question,
+      history: state.chatHistory.slice(-6),
+      use_sonnet: useSonnet,
+    });
+
+    removeMessage(loadingId);
+    addMessage({
+      role: 'assistant',
+      content: response.answer,
+      citations: response.citations || [],
+      has_results: response.has_results,
+      question,
+    });
+
+    // Update history
+    state.chatHistory.push({ role: 'user', content: question });
+    state.chatHistory.push({ role: 'assistant', content: response.answer });
+
+  } catch (e) {
+    removeMessage(loadingId);
+    addMessage({
+      role: 'assistant',
+      content: '请求失败：' + (e.message || '未知错误') + '\n\n请确认后端服务正在运行，API Key 已正确配置。',
+      citations: [],
+    });
+  } finally {
+    state.sending = false;
+    document.getElementById('send-btn').disabled = false;
+    document.getElementById('chat-input').focus();
+  }
+}
+
+function addMessage(msg) {
+  const empty = document.getElementById('chat-empty');
+  if (empty) empty.style.display = 'none';
+
+  const container = document.getElementById('chat-messages');
+  const id = 'msg-' + Date.now() + Math.random().toString(36).slice(2);
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'msg msg-' + msg.role;
+
+  if (msg.role === 'user') {
+    div.innerHTML = `<div class="bubble">${esc(msg.content)}</div>`;
+  } else {
+    const citationsHtml = buildCitationsHtml(msg.citations || []);
+    const feedbackHtml = msg.role === 'assistant' && msg.question ? buildFeedbackHtml(msg.question, msg.content) : '';
+    div.innerHTML = `
+      <div class="msg-meta">ECHO</div>
+      <div class="bubble">
+        <div class="msg-content">${renderMarkdown(msg.content)}</div>
+        ${citationsHtml}
+        ${feedbackHtml}
+      </div>`;
+  }
+
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function addLoadingMessage() {
+  const container = document.getElementById('chat-messages');
+  const id = 'loading-' + Date.now();
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'msg msg-assistant';
+  div.innerHTML = `
+    <div class="msg-meta">ECHO</div>
+    <div class="bubble">
+      <div class="msg-content text-dim"><span class="loading-dots">思考中</span></div>
+    </div>`;
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  return id;
+}
+
+function removeMessage(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function buildCitationsHtml(citations) {
+  if (!citations || citations.length === 0) return '';
+  const id = 'cit-' + Date.now();
+  const items = citations.map(c => `
+    <div class="citation-item">
+      <div class="citation-meta">📄 ${esc(c.title)}${c.date ? ' · ' + esc(c.date) : ''}</div>
+      <div class="citation-snippet">${esc(c.snippet)}</div>
+    </div>`).join('');
+  return `
+    <div class="citations-toggle" onclick="toggleCitations('${id}')">
+      <span>▶</span> 查看来源 (${citations.length})
+    </div>
+    <div class="citations-list" id="${id}">${items}</div>`;
+}
+
+function buildFeedbackHtml(question, answer) {
+  const id = 'fb-' + Date.now();
+  return `
+    <div class="feedback-row" id="${id}">
+      <span class="feedback-label">这条回答有帮助吗？</span>
+      <button class="feedback-btn" onclick="submitFeedback('${id}', true, ${JSON.stringify(question).replace(/'/g,"&#39;")}, ${JSON.stringify(answer.slice(0,200)).replace(/'/g,"&#39;")})">👍</button>
+      <button class="feedback-btn" onclick="submitFeedback('${id}', false, ${JSON.stringify(question).replace(/'/g,"&#39;")}, ${JSON.stringify(answer.slice(0,200)).replace(/'/g,"&#39;")})">👎</button>
+    </div>`;
+}
+
+function toggleCitations(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.toggle('open');
+  const toggle = el.previousElementSibling;
+  if (toggle) toggle.querySelector('span').textContent = el.classList.contains('open') ? '▼' : '▶';
+}
+
+async function submitFeedback(containerId, helpful, question, answer) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  try {
+    await api('/qa/feedback', 'POST', { question, answer, helpful });
+    container.innerHTML = `<span class="text-sm text-dim">感谢反馈 ${helpful ? '👍' : '👎'}</span>`;
+  } catch (e) {
+    container.innerHTML = '<span class="text-sm text-dim">反馈提交失败</span>';
+  }
+}
+
+// ════════════════════════════════════════════════
+// FTUE Recommendations
+// ════════════════════════════════════════════════
+async function loadRecommendations() {
+  if (state.ftueShown) return;
+  try {
+    const data = await api('/qa/recommendations');
+    const questions = data.questions || [];
+    if (questions.length === 0) return;
+
+    const recList = document.getElementById('rec-list');
+    recList.innerHTML = questions.map(q => `
+      <button class="rec-item" onclick="askRecommended(${JSON.stringify(q)})">
+        <span>💡</span>
+        <span>${esc(q)}</span>
+        <span class="rec-arrow">→</span>
+      </button>`).join('');
+
+    show('ftue-recs');
+    state.ftueShown = true;
+  } catch (e) {
+    // Silently fail for recommendations
+  }
+}
+
+function askRecommended(question) {
+  hide('ftue-recs');
+  document.getElementById('chat-input').value = question;
+  sendQuestion();
+}
+
+// ════════════════════════════════════════════════
+// Index Stats
+// ════════════════════════════════════════════════
+async function loadIndexStats() {
+  try {
+    const stats = await api('/index/stats');
+    state.indexStats = stats;
+
+    const badge = document.getElementById('index-status-badge');
+    if (stats.total_chunks > 0) {
+      badge.textContent = `${stats.total_chunks} 块已索引`;
+      badge.className = 'text-sm text-accent';
+      // Auto-load recommendations on first visit
+      if (!state.ftueShown && state.currentTab === 'chat') {
+        loadRecommendations();
+      }
+    } else {
+      badge.textContent = '未索引';
+      badge.className = 'text-sm text-dim';
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
+// ════════════════════════════════════════════════
+// Settings
+// ════════════════════════════════════════════════
+async function loadSettings() {
+  // Index stats
+  try {
+    const stats = await api('/index/stats');
+    state.indexStats = stats;
+    document.getElementById('stat-chunks').textContent = stats.total_chunks;
+    document.getElementById('stat-sources').textContent = stats.source_count || '-';
+    document.getElementById('stat-updated').textContent = stats.last_updated
+      ? new Date(stats.last_updated).toLocaleDateString('zh-CN')
+      : '-';
+  } catch (e) {}
+
+  // Import history
+  try {
+    const history = await api('/import/history');
+    const content = document.getElementById('history-content');
+    if (!history || history.length === 0) {
+      content.innerHTML = '<div class="text-dim text-sm">暂无导入记录</div>';
+    } else {
+      content.innerHTML = `<table class="history-table">
+        <thead><tr>
+          <th>文件名</th><th>时间</th><th>文档数</th><th>文本块</th><th></th>
+        </tr></thead>
+        <tbody>${history.map(h => `<tr>
+          <td title="${esc(h.filename)}">${esc(h.filename)}</td>
+          <td>${new Date(h.imported_at).toLocaleDateString('zh-CN')}</td>
+          <td>${h.doc_count}</td>
+          <td>${h.chunk_count}</td>
+          <td><button class="btn btn-sm btn-danger" onclick="deleteImport('${h.id}', this)">删除</button></td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+    }
+  } catch (e) {}
+}
+
+async function deleteImport(importId, btn) {
+  if (!confirm('确定删除这批导入的数据？此操作不可撤销。')) return;
+  btn.disabled = true;
+  btn.textContent = '删除中...';
+  try {
+    await api('/import/' + importId, 'DELETE');
+    loadSettings();
+    loadIndexStats();
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '删除';
+    alert('删除失败：' + (e.message || '未知错误'));
+  }
+}
+
+async function clearAllData() {
+  if (!confirm('确定清除所有数据？这将删除所有向量索引和导入记录，操作不可撤销！')) return;
+  try {
+    await api('/data/all', 'DELETE');
+    state.chatHistory = [];
+    state.indexStats = null;
+    state.ftueShown = false;
+    document.getElementById('chat-messages').innerHTML =
+      `<div class="empty-state" id="chat-empty">
+        <div class="empty-icon">💬</div>
+        <p>还没有对话记录。<br>在下方输入你想问的问题，或先<button class="btn btn-sm btn-secondary" onclick="switchTab('import')" style="vertical-align:middle;margin-left:4px;">导入笔记</button></p>
+      </div>`;
+    hide('ftue-recs');
+    loadSettings();
+    loadIndexStats();
+  } catch (e) {
+    alert('清除失败：' + (e.message || '未知错误'));
+  }
+}
+
+// ════════════════════════════════════════════════
+// Utilities
+// ════════════════════════════════════════════════
+async function api(path, method = 'GET', body = null) {
+  const opts = {
+    method,
+    headers: body instanceof FormData ? {} : { 'Content-Type': 'application/json' },
+  };
+  if (body && !(body instanceof FormData)) opts.body = JSON.stringify(body);
+  else if (body instanceof FormData) opts.body = body;
+
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    let detail = '';
+    try { detail = (await res.json()).detail || ''; } catch {}
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  // Basic markdown rendering
+  let html = esc(text);
+  // Bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // HR
+  html = html.replace(/^---$/gm, '<hr>');
+  // Italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // Inline code
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  // Line breaks → paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  return '<p>' + html + '</p>';
+}
+
+// Start
+init();
+</script>
+</body>
+</html>
