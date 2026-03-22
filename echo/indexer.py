@@ -126,8 +126,13 @@ def get_all_chunks() -> list[dict]:
         return []
     table = db.open_table(TABLE_NAME)
     try:
-        rows = table.to_pandas()[["id", "content", "source_file", "title", "date", "section_heading"]].to_dict("records")
-        return rows
+        arrow_table = table.to_arrow().select(["id", "content", "source_file", "title", "date", "section_heading"])
+        rows = arrow_table.to_pydict()
+        n = len(rows["id"])
+        return [
+            {k: rows[k][i] for k in rows}
+            for i in range(n)
+        ]
     except Exception:
         return []
 
@@ -140,9 +145,12 @@ def get_stats() -> IndexStats:
 
     table = db.open_table(TABLE_NAME)
     try:
-        df = table.to_pandas()
-        total = len(df)
-        source_count = df["source_file"].nunique() if total > 0 else 0
+        total = table.count_rows()
+        if total > 0:
+            source_files = table.to_arrow().select(["source_file"]).to_pydict()["source_file"]
+            source_count = len(set(source_files))
+        else:
+            source_count = 0
     except Exception:
         return IndexStats(total_chunks=0, last_updated=None)
 
@@ -160,23 +168,21 @@ def get_stats() -> IndexStats:
 
 def delete_import(import_id: str) -> int:
     """Delete all chunks associated with an import_id. Returns count deleted."""
+    # Validate import_id is a safe UUID to prevent filter injection
+    import re as _re
+    if not _re.fullmatch(r'[0-9a-f\-]{36,72}', import_id):
+        return 0
+
     db = _get_db()
     if not _table_exists(db):
         return 0
 
     table = db.open_table(TABLE_NAME)
     try:
-        df = table.to_pandas()
-        before = len(df)
-        remaining = df[df["import_id"] != import_id]
-        deleted = before - len(remaining)
-        if deleted > 0:
-            # Recreate table with remaining data
-            db.drop_table(TABLE_NAME)
-            if len(remaining) > 0:
-                new_table = db.create_table(TABLE_NAME, schema=SCHEMA)
-                new_table.add(remaining.to_dict("records"))
-        return deleted
+        before = table.count_rows()
+        table.delete(f"import_id = '{import_id}'")
+        after = table.count_rows()
+        return before - after
     except Exception:
         return 0
 

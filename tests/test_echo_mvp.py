@@ -235,7 +235,8 @@ def test_api_qa_no_index(client):
     assert resp.status_code == 200
     data = resp.json()
     assert data['has_results'] is False
-    assert '导入' in data['answer']
+    # When index is empty, the answer guides user to add content first
+    assert 'Echo' in data['answer'] or '输入框' in data['answer']
 
 
 def test_api_import_history_empty(client):
@@ -259,4 +260,59 @@ def test_api_recommendations_empty(client):
 def test_frontend_served(client):
     resp = client.get('/')
     assert resp.status_code == 200
-    assert 'ECHO' in resp.text
+    # Page title is "Echo — 认知副驾" (mixed-case)
+    assert 'Echo' in resp.text
+
+
+# ─── Journal Entry Tests ─────────────────────────────────────────────────────
+
+def test_journal_entry_creation(client):
+    """POST /journal/entry stores text as indexed chunks and returns metadata."""
+    payload = {'text': '今天思考了一下 to B 与 to C 的差异，觉得付费意愿才是核心变量。'}
+    resp = client.post('/journal/entry', json=payload)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data['ok'] is True
+    assert 'entry_id' in data
+    assert data['chunks_stored'] >= 1
+
+    # The chunk should now be visible in index stats
+    stats_resp = client.get('/index/stats')
+    assert stats_resp.json()['total_chunks'] >= 1
+
+
+def test_journal_entry_empty_text_rejected(client):
+    """POST /journal/entry with blank text returns 400."""
+    resp = client.post('/journal/entry', json={'text': '   '})
+    assert resp.status_code == 400
+
+
+def test_journal_entry_then_qa_finds_content(client, tmp_path):
+    """After storing a journal entry, QA retriever should find matching content.
+
+    The LLM call (answer_question) is mocked so that no VOLC_API_KEY is needed.
+    The test verifies that the retriever path is exercised (not the empty-index
+    early-return path) and that the response structure is valid.
+    """
+    from unittest.mock import AsyncMock, patch
+    from echo.models import QAResponse
+
+    # Store a distinctive entry
+    entry_text = '产品核心竞争力不是 AI 技术本身，而是解决的问题有多真实。'
+    client.post('/journal/entry', json={'text': entry_text})
+
+    stub_response = QAResponse(
+        answer='（测试存根回答）产品核心竞争力在于解决真实问题。',
+        citations=[],
+        has_results=True,
+    )
+
+    with patch('echo.main.answer_question', new=AsyncMock(return_value=stub_response)):
+        resp = client.post('/qa', json={'question': '产品核心竞争力是什么？'})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    # Must not hit the empty-index fallback
+    assert data['has_results'] is True
+    # answer_question stub was called, not the no-index branch
+    assert '输入框' not in data['answer']

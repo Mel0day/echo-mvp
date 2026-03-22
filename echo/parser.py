@@ -76,31 +76,30 @@ def _parse_html(content: str, filename: str) -> tuple[str, str, list[str]]:
     return title, text, tags
 
 
-def parse_notion_zip(zip_bytes: bytes) -> tuple[list[Document], list[dict]]:
-    """
-    Parse a Notion export zip file.
-
-    Returns:
-        (documents, failed_files) where failed_files is a list of
-        {'filename': str, 'reason': str} dicts.
-    """
-    documents: list[Document] = []
-    failed_files: list[dict] = []
-
-    try:
-        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
-    except zipfile.BadZipFile:
-        return [], [{'filename': 'archive', 'reason': '不是有效的 zip 文件'}]
-
+def _parse_zip_entries(zf: zipfile.ZipFile, documents: list, failed_files: list) -> None:
+    """Recursively parse entries in a ZipFile, handling nested zips."""
     file_list = zf.namelist()
 
-    # Filter to only .md and .html files, exclude system/hidden files
     target_files = [
         f for f in file_list
         if (f.endswith('.md') or f.endswith('.html'))
         and not Path(f).name.startswith('.')
         and '__MACOSX' not in f
     ]
+
+    # Recurse into nested zips (Notion often wraps export in outer zip)
+    nested_zips = [
+        f for f in file_list
+        if f.endswith('.zip') and '__MACOSX' not in f
+    ]
+    for nested_path in nested_zips:
+        try:
+            nested_bytes = zf.read(nested_path)
+            inner_zf = zipfile.ZipFile(io.BytesIO(nested_bytes))
+            _parse_zip_entries(inner_zf, documents, failed_files)
+            inner_zf.close()
+        except Exception as e:
+            failed_files.append({'filename': nested_path, 'reason': f'内层 zip 解析失败: {str(e)[:80]}'})
 
     for filepath in target_files:
         filename = Path(filepath).name
@@ -124,8 +123,8 @@ def parse_notion_zip(zip_bytes: bytes) -> tuple[list[Document], list[dict]]:
                 title, body, tags = _parse_html(content, filename)
 
             if not body.strip():
-                failed_files.append({'filename': filename, 'reason': '解析后内容为空'})
-                continue
+                # Fallback: use title as content (e.g. Notion pages with only a heading)
+                body = title
 
             doc_id = str(uuid.uuid4())
             documents.append(Document(
@@ -140,5 +139,27 @@ def parse_notion_zip(zip_bytes: bytes) -> tuple[list[Document], list[dict]]:
         except Exception as e:
             failed_files.append({'filename': filename, 'reason': f'解析错误: {str(e)[:100]}'})
 
+
+def parse_notion_zip(zip_bytes: bytes) -> tuple[list[Document], list[dict]]:
+    """
+    Parse a Notion export zip file. Handles nested zips (Notion wraps export in outer zip).
+
+    Returns:
+        (documents, failed_files) where failed_files is a list of
+        {'filename': str, 'reason': str} dicts.
+    """
+    documents: list[Document] = []
+    failed_files: list[dict] = []
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile:
+        return [], [{'filename': 'archive', 'reason': '不是有效的 zip 文件'}]
+
+    _parse_zip_entries(zf, documents, failed_files)
     zf.close()
+
+    if not documents and not failed_files:
+        failed_files.append({'filename': 'archive', 'reason': '未找到可解析内容'})
+
     return documents, failed_files

@@ -1,25 +1,30 @@
-"""Claude API Q&A engine for Echo."""
+"""VolcEngine Q&A engine for Echo (OpenAI-compatible API)."""
 from __future__ import annotations
 
 import asyncio
 import os
 from typing import Optional
 
-import anthropic
+import httpx
+from openai import AsyncOpenAI, APIError
 
 from echo.models import Citation, QAMessage, QAResponse, SearchResult
 
-HAIKU_MODEL = "claude-haiku-4-5"
-SONNET_MODEL = "claude-sonnet-4-6"
+VOLC_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+DEFAULT_MODEL = "doubao-seed-2-0-pro-260215"
 TIMEOUT_SECONDS = 30
 MAX_RETRIES = 2
 
 
-def _get_client() -> anthropic.AsyncAnthropic:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+def _get_client() -> AsyncOpenAI:
+    api_key = os.environ.get("VOLC_API_KEY")
     if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY 未设置")
-    return anthropic.AsyncAnthropic(api_key=api_key)
+        raise RuntimeError("VOLC_API_KEY 未设置")
+    return AsyncOpenAI(
+        api_key=api_key,
+        base_url=VOLC_BASE_URL,
+        http_client=httpx.AsyncClient(trust_env=False),
+    )
 
 
 def _build_context_block(results: list[SearchResult]) -> str:
@@ -86,25 +91,24 @@ async def answer_question(
     use_sonnet: bool = False,
 ) -> QAResponse:
     """
-    Generate an answer using Claude API with retrieved context.
+    Generate an answer using VolcEngine API with retrieved context.
 
     Enforces citation requirement — if no results, returns graceful no-results response.
     """
     if not search_results:
         return _build_no_results_response(question)
 
-    model = SONNET_MODEL if use_sonnet else HAIKU_MODEL
+    model = DEFAULT_MODEL
     client = _get_client()
 
     context_block = _build_context_block(search_results)
     system_prompt = _build_system_prompt()
 
-    # Build conversation history for multi-turn
-    messages = []
+    # Build messages: system + history + current turn
+    messages = [{"role": "system", "content": system_prompt}]
     for msg in history[-6:]:  # keep last 3 turns (6 messages)
         messages.append({"role": msg.role, "content": msg.content})
 
-    # Current turn: inject context into user message
     user_content = f"""## 我的笔记内容（检索结果）
 
 {context_block}
@@ -123,10 +127,9 @@ async def answer_question(
     for attempt in range(MAX_RETRIES + 1):
         try:
             async with asyncio.timeout(TIMEOUT_SECONDS):
-                response = await client.messages.create(
+                response = await client.chat.completions.create(
                     model=model,
                     max_tokens=1500,
-                    system=system_prompt,
                     messages=messages,
                 )
             break
@@ -137,31 +140,30 @@ async def answer_question(
                 has_results=True,
                 suggestions=["尝试把问题拆成更小的部分", "稍等片刻后重试"],
             )
-        except anthropic.APIError as e:
+        except APIError as e:
             last_error = e
             if attempt < MAX_RETRIES:
                 await asyncio.sleep(1.0 * (2 ** attempt))
             else:
                 return QAResponse(
-                    answer=f"Claude API 暂时不可用，请稍后重试。错误信息：{str(e)[:100]}",
+                    answer=f"API 暂时不可用，请稍后重试。错误信息：{str(e)[:100]}",
                     citations=[],
                     has_results=True,
-                    suggestions=["检查网络连接", "确认 ANTHROPIC_API_KEY 是否正确"],
+                    suggestions=["检查网络连接", "确认 VOLC_API_KEY 是否正确"],
                 )
     else:
         return QAResponse(
-            answer=f"API 调用失败，请稍后重试。",
+            answer="API 调用失败，请稍后重试。",
             citations=[],
             has_results=True,
             suggestions=[],
         )
 
-    answer_text = response.content[0].text
+    answer_text = response.choices[0].message.content
 
     # Build citations from the actual search results used
     citations = []
     for r in search_results:
-        # Extract a snippet (first 150 chars of content)
         snippet = r.content[:150].replace('\n', ' ').strip()
         if len(r.content) > 150:
             snippet += "..."
@@ -192,7 +194,6 @@ async def generate_recommendations(sample_chunks: list[SearchResult]) -> list[st
 
     client = _get_client()
 
-    # Sample content for recommendation generation
     content_sample = "\n\n".join([
         f"[{c.title}] {c.content[:200]}"
         for c in sample_chunks[:10]
@@ -214,14 +215,13 @@ async def generate_recommendations(sample_chunks: list[SearchResult]) -> list[st
 
     try:
         async with asyncio.timeout(20):
-            response = await client.messages.create(
-                model=HAIKU_MODEL,
+            response = await client.chat.completions.create(
+                model=DEFAULT_MODEL,
                 max_tokens=300,
                 messages=[{"role": "user", "content": prompt}],
             )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message.content.strip()
         questions = [q.strip() for q in text.split('\n') if q.strip()]
-        # Return exactly 3
         return questions[:3] if len(questions) >= 3 else questions + [
             "我最近在思考什么问题？"
         ]

@@ -114,3 +114,8 @@ class PrivacyConsent(BaseModel):
     """User's privacy consent."""
     consented: bool
     timestamp: str
+
+
+class JournalEntryRequest(BaseModel):
+    """Request body for storing a journal entry."""
+    text: str

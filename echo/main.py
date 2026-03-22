@@ -17,9 +17,11 @@ from fastapi.staticfiles import StaticFiles
 from echo import indexer, retriever
 from echo.chunker import chunk_documents
 from echo.embedder import embed_chunks
+from echo.journal import entry_to_chunks
 from echo.models import (
     FeedbackRequest,
     ImportStatus,
+    JournalEntryRequest,
     PrivacyConsent,
     QARequest,
     QAResponse,
@@ -56,6 +58,11 @@ async def serve_frontend():
 
 # ─── Privacy Consent ────────────────────────────────────────────────────────
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/consent")
 async def get_consent_status():
     """Get current privacy consent status."""
@@ -82,8 +89,11 @@ async def start_import(file: UploadFile = File(...)):
     status = ImportStatus(job_id=job_id, status="pending")
     _jobs[job_id] = status
 
-    # Read file contents
+    # Read file contents (enforce 50 MB size limit)
     contents = await file.read()
+    MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+    if len(contents) > MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "文件过大，最大支持 50 MB")
 
     # Start background processing
     asyncio.create_task(_process_import(job_id, contents, file.filename))
@@ -108,7 +118,11 @@ async def _process_import(job_id: str, zip_bytes: bytes, filename: str) -> None:
 
         if not documents:
             status.status = "error"
-            status.error = "没有找到可解析的文档。请确认上传的是 Notion 导出的 zip 文件。"
+            reasons = '; '.join(f['reason'] for f in failed_files[:3]) if failed_files else ''
+            status.error = (
+                "没有找到可解析的文档。"
+                + (f"原因：{reasons}" if reasons else "请确认上传的是 Notion 导出的 zip 文件。")
+            )
             return
 
         status.message = f"解析完成，共 {len(documents)} 篇文档，开始分块..."
@@ -204,6 +218,34 @@ async def delete_import(import_id: str):
     return {"ok": True, "deleted_chunks": deleted}
 
 
+# ─── Journal (对话积累模式) ──────────────────────────────────────────────────
+
+@app.post("/journal/entry")
+async def add_journal_entry(body: JournalEntryRequest) -> dict:
+    """Store a user's text as a journal entry: text → chunks → embed → index."""
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(400, "内容不能为空")
+
+    chunks = entry_to_chunks(text)
+    if not chunks:
+        raise HTTPException(400, "无法处理该内容")
+
+    try:
+        chunks_with_embeddings = await embed_chunks(chunks)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    entry_id = chunks[0].source_file
+    indexer.add_chunks(chunks_with_embeddings, import_id=entry_id)
+
+    return {
+        "ok": True,
+        "entry_id": entry_id,
+        "chunks_stored": len(chunks),
+    }
+
+
 # ─── Index Stats ─────────────────────────────────────────────────────────────
 
 @app.get("/index/stats")
@@ -220,14 +262,16 @@ async def ask_question(body: QARequest) -> dict:
     """Answer a natural language question using hybrid search + Claude."""
     if not body.question.strip():
         raise HTTPException(400, "问题不能为空")
+    if len(body.question) > 2000:
+        raise HTTPException(400, "问题长度不能超过 2000 字符")
 
     stats = indexer.get_stats()
     if stats.total_chunks == 0:
         return QAResponse(
-            answer="你还没有导入任何笔记。请先导入 Notion 导出的 zip 文件，然后再来提问。",
+            answer="你还没有和 Echo 说过任何话。先在下方输入框分享一些你的想法，Echo 会记住它们，之后你就可以来问我了。",
             citations=[],
             has_results=False,
-            suggestions=["点击「导入」按钮上传你的 Notion 导出文件"],
+            suggestions=["在输入框里写下你最近在思考的事情，按「记住」存入 Echo"],
         ).model_dump()
 
     try:
@@ -235,12 +279,15 @@ async def ask_question(body: QARequest) -> dict:
     except RuntimeError as e:
         raise HTTPException(503, str(e))
 
-    response = await answer_question(
-        question=body.question,
-        search_results=results,
-        history=body.history,
-        use_sonnet=body.use_sonnet,
-    )
+    try:
+        response = await answer_question(
+            question=body.question,
+            search_results=results,
+            history=body.history,
+            use_sonnet=body.use_sonnet,
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
 
     return response.model_dump()
 
@@ -275,7 +322,10 @@ async def get_recommendations():
         for c in sample
     ]
 
-    questions = await generate_recommendations(sample_results)
+    try:
+        questions = await generate_recommendations(sample_results)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
     return {"questions": questions}
 
 
