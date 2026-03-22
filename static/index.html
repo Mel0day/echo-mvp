@@ -325,7 +325,7 @@
   <div class="consent-box">
     <h2>使用前请了解</h2>
     <p>Echo 会把你输入的文字发送到<span class="hl">火山引擎 embedding API</span>进行向量化，用于语义检索。</p>
-    <p><span class="hl">你的原始文字不会上传到任何服务器</span>——只有向量数据发送到 API，原文始终只存在你的本机 <code>./data/</code> 目录下，随时可以清除。</p>
+    <p><span class="hl">你的原始文字仅存储在本服务器</span>——只有向量数据发送到火山引擎 embedding API，原文存储在服务器 <code>/data/</code> 目录下，随时可以清除。</p>
     <div class="consent-actions">
       <button class="btn btn-primary" onclick="giveConsent(true)">我理解，开始用</button>
       <button class="btn btn-ghost" onclick="giveConsent(false)">不同意</button>
