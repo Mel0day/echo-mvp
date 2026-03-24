@@ -8,7 +8,7 @@ from typing import Optional
 import httpx
 from openai import AsyncOpenAI, APIError
 
-from echo.models import Citation, QAMessage, QAResponse, SearchResult
+from echo.models import Citation, QAMessage, QAResponse, RelatedMemory, SearchResult
 
 VOLC_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 DEFAULT_MODEL = "doubao-seed-2-0-pro-260215"
@@ -161,9 +161,10 @@ async def answer_question(
 
     answer_text = response.choices[0].message.content
 
-    # Build citations from the actual search results used
+    # Top 3 results become citations; rank 4-8 become related_memories
+    TOP_N = 3
     citations = []
-    for r in search_results:
+    for r in search_results[:TOP_N]:
         snippet = r.content[:150].replace('\n', ' ').strip()
         if len(r.content) > 150:
             snippet += "..."
@@ -174,10 +175,25 @@ async def answer_question(
             snippet=snippet,
         ))
 
+    related_memories = []
+    for r in search_results[TOP_N:TOP_N + 5]:  # ranks 4-8
+        snippet = r.content[:80].replace('\n', ' ').strip()
+        if len(r.content) > 80:
+            snippet += "..."
+        related_memories.append(RelatedMemory(
+            title=r.title,
+            snippet=snippet,
+            source_file=r.source_file,
+            date=r.date,
+        ))
+        if len(related_memories) >= 2:
+            break
+
     return QAResponse(
         answer=answer_text,
         citations=citations,
         has_results=True,
+        related_memories=related_memories,
     )
 
 

@@ -65,12 +65,21 @@ class QARequest(BaseModel):
     use_sonnet: bool = False
 
 
+class RelatedMemory(BaseModel):
+    """A related memory snippet shown after an answer."""
+    title: str
+    snippet: str
+    source_file: str
+    date: Optional[str] = None
+
+
 class QAResponse(BaseModel):
     """Response from Q&A endpoint."""
     answer: str
     citations: list[Citation]
     has_results: bool
     suggestions: list[str] = Field(default_factory=list)
+    related_memories: list[RelatedMemory] = Field(default_factory=list)
 
 
 class ImportStatus(BaseModel):

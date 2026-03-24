@@ -317,6 +317,38 @@
   #send-btn.ask { background: var(--accent); color: #fff; }
   .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
 
+  /* ── Related Memories (Story-004) ── */
+  .related-memories {
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+  .related-memories-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .related-memories-title { font-size: 11px; color: var(--muted); flex: 1; }
+  .related-memories-close {
+    background: transparent; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 0 2px;
+  }
+  .related-memories-close:hover { color: var(--text); }
+  .related-memory-item {
+    background: #111;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 7px 10px;
+    margin-bottom: 5px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .related-memory-item:hover { border-color: var(--accent); }
+  .related-memory-item:last-child { margin-bottom: 0; }
+  .related-memory-name { font-size: 12px; color: var(--text); margin-bottom: 2px; }
+  .related-memory-snippet { font-size: 11px; color: var(--muted); font-style: italic; }
+  .related-memory-date { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
   /* ── Daily Review Card (Story-003) ── */
   #review-card {
     margin: 12px 20px 0;
@@ -950,6 +982,8 @@ async function doAsk(question) {
     const answer = d.answer || '（无回答）';
     const el = addMsg('echo', answer);
 
+    const bubble = el.querySelector('.bubble');
+
     if (d.citations && d.citations.length) {
       const cits = document.createElement('div');
       cits.className = 'citations';
@@ -964,7 +998,46 @@ async function doAsk(question) {
         det.appendChild(div);
       });
       cits.appendChild(det);
-      el.querySelector('.bubble').appendChild(cits);
+      bubble.appendChild(cits);
+    }
+
+    if (d.related_memories && d.related_memories.length) {
+      const relDiv = document.createElement('div');
+      relDiv.className = 'related-memories';
+      const header = document.createElement('div');
+      header.className = 'related-memories-header';
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'related-memories-title';
+      titleSpan.textContent = '🔗 相关记忆';
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'related-memories-close';
+      closeBtn.textContent = '×';
+      closeBtn.onclick = function() { relDiv.style.display = 'none'; };
+      header.appendChild(titleSpan);
+      header.appendChild(closeBtn);
+      relDiv.appendChild(header);
+
+      d.related_memories.forEach(rm => {
+        const item = document.createElement('div');
+        item.className = 'related-memory-item';
+        item.title = '点击询问更多';
+        item.innerHTML = `
+          <div class="related-memory-name">${esc(rm.title)}</div>
+          <div class="related-memory-snippet">${esc(rm.snippet)}</div>
+          ${rm.date ? `<div class="related-memory-date">${esc(rm.date)}</div>` : ''}`;
+        item.onclick = function() {
+          const q = `告诉我更多关于《${rm.title}》的内容`;
+          setMode('ask');
+          const inp = document.getElementById('text-input');
+          inp.value = q;
+          autoResize(inp);
+          inp.focus();
+          send();
+        };
+        relDiv.appendChild(item);
+      });
+
+      bubble.appendChild(relDiv);
     }
 
     chatHistory.push({role:'user', content: question});

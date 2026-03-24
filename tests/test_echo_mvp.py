@@ -266,6 +266,64 @@ def test_frontend_served(client):
 
 # ─── Journal Entry Tests ─────────────────────────────────────────────────────
 
+# ─── Story-004: Related Memories ─────────────────────────────────────────────
+
+def test_qa_response_has_related_memories_field(client):
+    """QAResponse model_dump must include related_memories field."""
+    from echo.models import QAResponse
+    resp = QAResponse(answer='test', citations=[], has_results=True)
+    d = resp.model_dump()
+    assert 'related_memories' in d
+    assert d['related_memories'] == []
+
+
+def test_related_memory_model():
+    """RelatedMemory model accepts all fields."""
+    from echo.models import RelatedMemory
+    rm = RelatedMemory(title='测试标题', snippet='这是摘要', source_file='test.md', date='2024-01-01')
+    assert rm.title == '测试标题'
+    assert rm.date == '2024-01-01'
+
+
+def test_answer_question_builds_related_memories():
+    """answer_question maps rank 4-8 search results into related_memories."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from echo.models import SearchResult
+    from echo.qa import answer_question
+
+    # Build 6 search results
+    results = [
+        SearchResult(
+            chunk_id=f'id-{i}',
+            content=f'Content number {i} ' * 20,
+            source_file=f'file{i}.md',
+            title=f'Doc {i}',
+            date='2024-01-01',
+            score=1.0 - i * 0.1,
+        )
+        for i in range(6)
+    ]
+
+    # Mock the LLM call
+    mock_choice = MagicMock()
+    mock_choice.message.content = '测试回答内容'
+    mock_response = MagicMock()
+    mock_response.choices = [mock_choice]
+
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    with patch('echo.qa._get_client', return_value=mock_client):
+        response = asyncio.get_event_loop().run_until_complete(
+            answer_question(question='测试问题', search_results=results, history=[])
+        )
+
+    assert len(response.citations) <= 3
+    assert len(response.related_memories) >= 1
+    assert len(response.related_memories) <= 2
+
+
 def test_journal_entry_creation(client):
     """POST /journal/entry stores text as indexed chunks and returns metadata."""
     payload = {'text': '今天思考了一下 to B 与 to C 的差异，觉得付费意愿才是核心变量。'}
