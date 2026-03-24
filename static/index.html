@@ -317,6 +317,21 @@
   #send-btn.ask { background: var(--accent); color: #fff; }
   .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
 
+  /* ── Export Button (Story-005) ── */
+  .msg-actions {
+    display: flex; gap: 6px; margin-top: 4px; padding: 0 4px;
+    justify-content: flex-end;
+  }
+  .btn-export {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--muted); border-radius: 4px;
+    padding: 2px 8px; font-size: 11px;
+    cursor: pointer; font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .btn-export:hover { color: var(--text); border-color: var(--accent); }
+  .btn-export.exported { color: var(--green); border-color: var(--green-border); }
+
   /* ── Related Memories (Story-004) ── */
   .related-memories {
     margin-top: 10px;
@@ -1040,6 +1055,25 @@ async function doAsk(question) {
       bubble.appendChild(relDiv);
     }
 
+    // Add export button (Story-005)
+    const actions = document.createElement('div');
+    actions.className = 'msg-actions';
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'btn-export';
+    exportBtn.setAttribute('aria-label', '导出此回答为 Markdown');
+    exportBtn.textContent = '↓ 导出';
+    exportBtn.onclick = function() {
+      exportAnswerAsMarkdown(question, answer, d.citations || []);
+      exportBtn.classList.add('exported');
+      exportBtn.textContent = '✓ 已导出';
+      setTimeout(() => {
+        exportBtn.classList.remove('exported');
+        exportBtn.textContent = '↓ 导出';
+      }, 1500);
+    };
+    actions.appendChild(exportBtn);
+    el.appendChild(actions);
+
     chatHistory.push({role:'user', content: question});
     chatHistory.push({role:'assistant', content: answer});
   } catch(e) {
@@ -1121,6 +1155,41 @@ function esc(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\n/g, '<br>');
+}
+
+// ── Export Markdown (Story-005) ──────────────────────────────────────────────
+
+function exportAnswerAsMarkdown(question, answer, citations) {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const timeStr = now.toLocaleString('zh', {dateStyle: 'short', timeStyle: 'short'});
+
+  // Sanitize question for filename: keep first 20 chars, replace unsafe chars
+  const sanitized = question
+    .slice(0, 20)
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, '-')
+    .trim();
+  const filename = `echo-${dateStr}-${sanitized}.md`;
+
+  let md = `# ${question}\n\n> 导出自 Echo · ${timeStr}\n\n${answer}`;
+
+  if (citations && citations.length > 0) {
+    md += '\n\n## 引用来源\n\n';
+    for (const c of citations) {
+      md += `- **${c.title}**（${c.date || '日期未知'}）：${c.snippet}\n`;
+    }
+  }
+
+  const blob = new Blob([md], {type: 'text/markdown; charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 init();

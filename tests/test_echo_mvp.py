@@ -324,6 +324,17 @@ def test_answer_question_builds_related_memories():
     assert len(response.related_memories) <= 2
 
 
+# ─── Story-005: Export Markdown (frontend, verified via page content) ─────────
+
+def test_frontend_contains_export_logic(client):
+    """The served index.html must contain the exportAnswerAsMarkdown function."""
+    resp = client.get('/')
+    assert resp.status_code == 200
+    assert 'exportAnswerAsMarkdown' in resp.text
+    assert 'createObjectURL' in resp.text
+    assert '导出此回答为 Markdown' in resp.text
+
+
 def test_journal_entry_creation(client):
     """POST /journal/entry stores text as indexed chunks and returns metadata."""
     payload = {'text': '今天思考了一下 to B 与 to C 的差异，觉得付费意愿才是核心变量。'}
