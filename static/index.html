@@ -317,6 +317,42 @@
   #send-btn.ask { background: var(--accent); color: #fff; }
   .hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
 
+  /* ── Daily Review Card (Story-003) ── */
+  #review-card {
+    margin: 12px 20px 0;
+    background: var(--surface);
+    border: 1px solid var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 12px 14px;
+    flex-shrink: 0;
+    display: none;
+  }
+  #review-card.visible { display: block; }
+  .review-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 6px;
+  }
+  .review-title { font-size: 12px; color: var(--accent); font-weight: 600; flex: 1; }
+  .review-close {
+    background: transparent; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 0 2px;
+    transition: color 0.15s;
+  }
+  .review-close:hover { color: var(--text); }
+  .review-content { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 8px; }
+  .review-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+  .review-meta .review-source { color: var(--text); }
+  .review-ask-btn {
+    background: var(--accent-dim); border: 1px solid var(--accent);
+    color: var(--accent); border-radius: 4px;
+    padding: 4px 10px; font-size: 11px;
+    cursor: pointer; font-family: inherit;
+    transition: background 0.15s;
+  }
+  .review-ask-btn:hover { background: var(--accent); color: #fff; }
+
   /* ── Memory View (Story-002) ── */
   #memory-view {
     display: none;
@@ -436,6 +472,15 @@
     </div>
   </div>
   <div id="memory-view"></div>
+  <div id="review-card">
+    <div class="review-header">
+      <span class="review-title">✨ 今日回顾</span>
+      <button class="review-close" onclick="closeReviewCard()" aria-label="关闭回顾卡片">×</button>
+    </div>
+    <div class="review-content" id="review-content"></div>
+    <div class="review-meta" id="review-meta"></div>
+    <button class="review-ask-btn" id="review-ask-btn">问 Echo 更多</button>
+  </div>
   <div id="chat"></div>
 </main>
 
@@ -463,6 +508,8 @@ let chatHistory = [];
 let msgCount = 0;
 // Track last shown day for dividers
 let lastDayLabel = null;
+// Story-003: track whether review card has been dismissed this session
+let reviewCardDismissed = false;
 
 async function init() {
   const r = await fetch('/consent').then(r => r.json()).catch(() => ({consented: null}));
@@ -624,11 +671,14 @@ function setMode(m) {
   const emptyState = document.getElementById('empty-state');
   const inputArea = document.getElementById('input-area');
 
+  const reviewCard = document.getElementById('review-card');
+
   if (m === 'memory') {
     memoryView.classList.add('active');
     chatEl.style.display = 'none';
     emptyState.style.display = 'none';
     inputArea.style.display = 'none';
+    reviewCard.classList.remove('visible');
     loadMemoryView();
     return;
   } else {
@@ -636,6 +686,11 @@ function setMode(m) {
     chatEl.style.display = '';
     inputArea.style.display = '';
     if (msgCount === 0) emptyState.style.display = '';
+  }
+
+  // Hide review card when not in ask mode
+  if (m !== 'ask') {
+    reviewCard.classList.remove('visible');
   }
 
   const inp = document.getElementById('text-input');
@@ -648,9 +703,82 @@ function setMode(m) {
     inp.placeholder = '问 Echo：我之前怎么看 X？我研究过哪些...？';
     btn.textContent = '问'; btn.className = 'ask';
     document.getElementById('hint').textContent = '问答模式 · ⌘+Enter 发送';
+    // Load daily review card when switching to ask mode
+    if (!reviewCardDismissed) loadReviewCard();
   }
   inp.focus();
   // Do NOT clear or hide chat messages when switching modes
+}
+
+// ── Daily Review Card (Story-003) ───────────────────────────────────────────
+
+async function loadReviewCard() {
+  if (reviewCardDismissed) return;
+  try {
+    const data = await fetch('/review/daily').then(r => r.json());
+    if (!data) return; // null means no data
+    renderReviewCard(data);
+  } catch(e) {
+    // silently ignore
+  }
+}
+
+function renderReviewCard(data) {
+  const card = document.getElementById('review-card');
+  const contentEl = document.getElementById('review-content');
+  const metaEl = document.getElementById('review-meta');
+  const askBtn = document.getElementById('review-ask-btn');
+
+  // Truncate content to 150 chars
+  const content = data.content || '';
+  contentEl.textContent = content.length > 150 ? content.slice(0, 150) + '…' : content;
+
+  // Time distance
+  const timeStr = data.date || data.imported_at;
+  const timeLabel = timeStr ? timeDistance(timeStr) : '';
+  metaEl.innerHTML = `<span class="review-source">${esc(data.title)}</span>${timeLabel ? ' · ' + timeLabel : ''}`;
+
+  // "Ask Echo more" button
+  const title = data.title || '这段内容';
+  askBtn.onclick = function() {
+    const q = `你还记得关于《${title}》的其他内容吗？`;
+    setMode('ask');
+    const inp = document.getElementById('text-input');
+    inp.value = q;
+    autoResize(inp);
+    inp.focus();
+    closeReviewCard();
+    send();
+  };
+
+  card.classList.add('visible');
+}
+
+function closeReviewCard() {
+  reviewCardDismissed = true;
+  document.getElementById('review-card').classList.remove('visible');
+}
+
+function timeDistance(dateStr) {
+  const now = Date.now();
+  let ts;
+  try {
+    ts = new Date(dateStr).getTime();
+  } catch(e) {
+    return '';
+  }
+  if (isNaN(ts)) return '';
+  const diffMs = now - ts;
+  const diffDays = Math.floor(diffMs / 86400000);
+  if (diffDays < 1) return '今天';
+  if (diffDays === 1) return '昨天';
+  if (diffDays < 7) return `${diffDays} 天前`;
+  if (diffDays < 14) return '上周';
+  if (diffDays < 30) return `${Math.floor(diffDays/7)} 周前`;
+  if (diffDays < 60) return '上个月';
+  if (diffDays < 180) return `${Math.floor(diffDays/30)} 个月前`;
+  if (diffDays < 365) return '半年前';
+  return `${Math.floor(diffDays/365)} 年前`;
 }
 
 // ── Memory View (Story-002) ──────────────────────────────────────────────────

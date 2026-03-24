@@ -350,6 +350,32 @@ async def submit_feedback(body: FeedbackRequest):
     return {"ok": True}
 
 
+# ─── Daily Review ────────────────────────────────────────────────────────────
+
+@app.get("/review/daily")
+async def get_daily_review():
+    """Return a random historical chunk for daily review."""
+    chunk = indexer.get_random_chunk_for_review()
+    if chunk is None:
+        return JSONResponse(content=None)
+
+    # imported_at: look up from import history
+    history = indexer.get_import_history()
+    imported_at = None
+    for rec in history:
+        if rec.id == chunk.get("import_id"):
+            imported_at = rec.imported_at
+            break
+
+    return {
+        "content": chunk.get("content", ""),
+        "title": chunk.get("title", ""),
+        "source_file": chunk.get("source_file", ""),
+        "date": chunk.get("date") or None,
+        "imported_at": imported_at,
+    }
+
+
 # ─── Data Management ─────────────────────────────────────────────────────────
 
 @app.delete("/data/all")

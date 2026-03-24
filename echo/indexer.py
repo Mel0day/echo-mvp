@@ -250,6 +250,61 @@ def remove_import_record(import_id: str) -> None:
     _save_import_history(history)
 
 
+def get_random_chunk_for_review() -> Optional[dict]:
+    """Return a random chunk for daily review, excluding chunks imported in the last 24h.
+
+    Prefers chunks that have a non-empty date field.
+    Returns None if no eligible chunks exist.
+    """
+    import random
+    from datetime import timedelta
+
+    db = _get_db()
+    if not _table_exists(db):
+        return None
+
+    table = db.open_table(TABLE_NAME)
+    try:
+        arrow_table = table.to_arrow().select(
+            ["id", "content", "source_file", "title", "date", "section_heading", "import_id"]
+        )
+        rows = arrow_table.to_pydict()
+    except Exception:
+        return None
+
+    n = len(rows["id"])
+    if n == 0:
+        return None
+
+    # Build cutoff: 24h ago
+    cutoff = datetime.now() - timedelta(hours=24)
+
+    # Load import history to map import_id -> imported_at
+    history = _load_import_history()
+    recent_imports: set[str] = {
+        h["id"]
+        for h in history
+        if datetime.fromisoformat(h["imported_at"]) > cutoff
+    }
+
+    all_items = [
+        {k: rows[k][i] for k in rows}
+        for i in range(n)
+    ]
+
+    # Exclude recently imported chunks
+    eligible = [item for item in all_items if item.get("import_id") not in recent_imports]
+    if not eligible:
+        # Fall back to all chunks if everything was imported recently
+        eligible = all_items
+
+    # Prefer chunks with a date
+    dated = [item for item in eligible if item.get("date")]
+    pool = dated if dated else eligible
+
+    return random.choice(pool)
+
+
 # Privacy consent helpers
 
 def save_consent(consented: bool) -> None:

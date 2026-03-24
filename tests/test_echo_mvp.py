@@ -287,6 +287,77 @@ def test_journal_entry_empty_text_rejected(client):
     assert resp.status_code == 400
 
 
+# ─── Story-002: Memory Management ────────────────────────────────────────────
+
+def test_api_memory_history_and_stats(client):
+    """GET /import/history and GET /index/stats are callable and return correct shape."""
+    history_resp = client.get('/import/history')
+    assert history_resp.status_code == 200
+    assert isinstance(history_resp.json(), list)
+
+    stats_resp = client.get('/index/stats')
+    assert stats_resp.status_code == 200
+    stats = stats_resp.json()
+    assert 'total_chunks' in stats
+    assert 'source_count' in stats
+
+
+def test_api_delete_nonexistent_import(client):
+    """DELETE /import/<nonexistent-id> returns 404."""
+    fake_id = '00000000-0000-0000-0000-000000000000'
+    resp = client.delete(f'/import/{fake_id}')
+    assert resp.status_code == 404
+
+
+# ─── Story-003: Daily Review ─────────────────────────────────────────────────
+
+def test_api_review_daily_empty(client):
+    """/review/daily returns null when index is empty."""
+    resp = client.get('/review/daily')
+    assert resp.status_code == 200
+    assert resp.json() is None
+
+
+def test_api_review_daily_with_data(client, tmp_path):
+    """After indexing a chunk, /review/daily returns a valid review object."""
+    import os
+    os.environ['ECHO_DATA_DIR'] = str(tmp_path)
+    from echo import indexer
+    import importlib
+    importlib.reload(indexer)
+
+    from echo.models import Chunk
+    import uuid
+    chunk = Chunk(
+        id=str(uuid.uuid4()),
+        content='这是一段用于测试每日回顾的历史笔记内容。',
+        source_file='review_test.md',
+        title='回顾测试文档',
+        date='2024-01-15',
+        chunk_index=0,
+        token_count=20,
+    )
+    import_id = indexer.record_import('review_test.zip', 1, 1)
+    # Simulate old import by backdating it in history
+    history = indexer._load_import_history()
+    from datetime import datetime, timedelta
+    history[-1]['imported_at'] = (datetime.now() - timedelta(hours=48)).isoformat()
+    indexer._save_import_history(history)
+    indexer.add_chunks([(chunk, [0.1] * 1536)], import_id=import_id)
+
+    # Now call the endpoint via a fresh client pointing at tmp_path
+    from echo.main import app
+    from fastapi.testclient import TestClient
+    c = TestClient(app)
+    resp = c.get('/review/daily')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data is not None
+    assert 'content' in data
+    assert 'title' in data
+    assert 'source_file' in data
+
+
 def test_journal_entry_then_qa_finds_content(client, tmp_path):
     """After storing a journal entry, QA retriever should find matching content.
 
